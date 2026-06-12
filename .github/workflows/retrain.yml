@@ -35,6 +35,9 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}   # nickolas-z/goit-devops-final-project
+  # Opt-in на Node.js 24 для JS-actions (checkout/setup-python/docker-*), щоб не
+  # залежати від дедлайну GitHub 2026-06-16. Прибирає warning про Node 20.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   retrain-build-bump:

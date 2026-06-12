@@ -22,7 +22,7 @@ spec:
         retrainWebhook:
           enabled: true
           kind: github
-          url: ""  # https://api.github.com/repos/nickolas-z/goit-devops-final-project/dispatches
+          url: "https://api.github.com/repos/nickolas-z/goit-devops-final-project/dispatches"
           ref: main
           event: drift-detected
           existingSecret: aiops-quality-webhook

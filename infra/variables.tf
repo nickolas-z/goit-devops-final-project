@@ -67,7 +67,9 @@ variable "gpu_instance_type" {
 variable "desired_size" {
   description = "Desired number of nodes per group"
   type        = number
-  default     = 2
+  # 3 ноди: на t3.small ліміт VPC CNI ~11 подів/ноду; повний стек (ArgoCD +
+  # kube-prometheus-stack + Loki + сервіс + системні) не влазить у 2 ноди.
+  default = 3
 }
 
 variable "min_size" {
