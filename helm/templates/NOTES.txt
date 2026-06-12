@@ -1,0 +1,16 @@
+AIOps Quality inference-сервіс задеплоєно
+
+Реліз : {{ .Release.Name }}
+Образ : {{ .Values.image.repository }}:{{ include "aiops-quality.imageTag" . }}
+Namespace: {{ .Release.Namespace }}
+
+Перевірка через port-forward:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aiops-quality.fullname" . }} 8000:{{ .Values.service.port }}
+  curl localhost:8000/health
+  curl -X POST localhost:8000/predict \
+    -H 'Content-Type: application/json' \
+    -d '{"features": [[5.1, 3.5, 1.4, 0.2]]}'
+
+Метрики: GET /metrics  (ServiceMonitor enabled={{ .Values.serviceMonitor.enabled }})
+Логи   : kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "aiops-quality.name" . }} -f

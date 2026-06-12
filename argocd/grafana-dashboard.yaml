@@ -1,0 +1,21 @@
+# ArgoCD Application — Grafana-дашборд як ConfigMap (GitOps, без ручного kubectl).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-grafana-dashboard
+  namespace: infra-tools
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nickolas-z/goit-devops-final-project.git
+    targetRevision: main
+    path: grafana
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,48 @@
+# ArgoCD Application — kube-prometheus-stack (Prometheus + Grafana).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: infra-tools
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 85.3.0
+    helm:
+      releaseName: monitoring
+      valuesObject:
+        alertmanager:
+          enabled: false
+        prometheus:
+          service:
+            type: ClusterIP
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+        grafana:
+          service:
+            type: ClusterIP
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              searchNamespace: ALL
+            datasources:
+              enabled: true
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              access: proxy
+              url: http://loki.monitoring.svc.cluster.local:3100
+              isDefault: false
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -1,0 +1,13 @@
+# Terraform state — НЕ комітити (містить sensitive outputs: CA data, endpoints)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Provider plugins / lock cache
+.terraform/
+.terraform.lock.hcl
+
+# Crash logs та плани
+crash.log
+*.tfplan
+*.tfvars.local

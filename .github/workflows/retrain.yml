@@ -1,0 +1,98 @@
+name: retrain-model
+
+# Основний CI/CD для AIOps Quality (GitHub Actions).
+# Послідовність: retrain → build → bump (один job, послідовні кроки).
+#   1. retrain — навчає модель (model/train.py), генерує артефакт + MODEL_VERSION;
+#   2. build   — збирає Docker-образ і пушить у GitHub Container Registry (ghcr.io);
+#   3. bump    — оновлює helm/values.yaml (image.tag) та helm/Chart.yaml (appVersion),
+#                комітить артефакти назад у repo → ArgoCD auto-sync викочує нову версію.
+#
+# Тригери:
+#   * workflow_dispatch   — вручну з вкладки Actions;
+#   * repository_dispatch — від inference-сервісу при дрейфі (event_type: drift-detected);
+#   * push у model/**     — зміна даних або скрипта тренування.
+#
+# Альтернатива на GitLab CI — у .gitlab-ci.yml (README 6-alt).
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [drift-detected]
+  push:
+    paths:
+      - "model/**"
+      - "app/**"
+      - "Dockerfile"
+
+permissions:
+  contents: write   # bump: коміт values.yaml/Chart.yaml/артефактів назад у repo
+  packages: write   # build: push образу в ghcr.io
+
+concurrency:
+  group: retrain-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # nickolas-z/goit-devops-final-project
+
+jobs:
+  retrain-build-bump:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 1. RETRAIN
+      - name: Retrain model
+        run: |
+          pip install --no-cache-dir -r model/requirements.txt
+          MODEL_VERSION="$(date +%Y%m%d)-${GITHUB_SHA::8}"
+          echo "MODEL_VERSION=${MODEL_VERSION}" >> "$GITHUB_ENV"
+          MODEL_VERSION="${MODEL_VERSION}" python model/train.py
+
+      # 2. BUILD + PUSH → ghcr.io
+      - name: Normalize image name (lowercase)
+        run: echo "IMAGE=${REGISTRY}/$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: |
+            MODEL_VERSION=${{ env.MODEL_VERSION }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.MODEL_VERSION }}
+            ${{ env.IMAGE }}:latest
+
+      # 3. BUMP Helm + commit назад → ArgoCD auto-sync нової версії
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Bump Helm chart and commit
+        run: |
+          yq -i ".image.tag = \"${MODEL_VERSION}\"" helm/values.yaml
+          yq -i ".appVersion = \"${MODEL_VERSION}\"" helm/Chart.yaml
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/values.yaml helm/Chart.yaml model/model.joblib model/reference.json
+          git commit -m "ci(retrain): model ${MODEL_VERSION} [skip ci]" \
+            || { echo "nothing to commit"; exit 0; }
+          git push

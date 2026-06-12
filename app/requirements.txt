@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.7,<3
+# ML-стек ЗАФІКСОВАНО точно: версія sklearn при unpickle має збігатися з тією, що
+# пікліла model.joblib у train.py (інакше ModuleNotFoundError на приватних модулях,
+# напр. sklearn `_loss`). Ті самі пін-версії — у model/requirements.txt.
+scikit-learn==1.7.2
+numpy==2.2.6
+scipy==1.15.3
+joblib==1.5.3
+prometheus-client>=0.20
+requests>=2.31,<3

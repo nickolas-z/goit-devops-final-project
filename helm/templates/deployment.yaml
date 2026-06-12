@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aiops-quality.fullname" . }}
+  labels:
+    {{- include "aiops-quality.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "aiops-quality.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aiops-quality.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "aiops-quality.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ include "aiops-quality.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "aiops-quality.fullname" . }}-env
+          env:
+            - name: MODEL_VERSION
+              value: {{ include "aiops-quality.imageTag" . | quote }}
+            {{- if .Values.retrainWebhook.enabled }}
+            - name: RETRAIN_WEBHOOK_KIND
+              value: {{ .Values.retrainWebhook.kind | quote }}
+            - name: RETRAIN_WEBHOOK_URL
+              value: {{ .Values.retrainWebhook.url | quote }}
+            - name: RETRAIN_WEBHOOK_REF
+              value: {{ .Values.retrainWebhook.ref | quote }}
+            - name: RETRAIN_WEBHOOK_EVENT
+              value: {{ .Values.retrainWebhook.event | quote }}
+            - name: RETRAIN_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.retrainWebhook.existingSecret | default (printf "%s-webhook" (include "aiops-quality.fullname" .)) }}
+                  key: token
+                  optional: true
+            {{- end }}
+          {{- if .Values.probes.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,44 @@
+# ArgoCD Application — GitOps-деплой inference-сервісу з Helm-чарта цього репозиторію.
+#   kubectl apply -n infra-tools -f argocd/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aiops-quality
+  namespace: infra-tools
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nickolas-z/goit-devops-final-project.git
+    targetRevision: main
+    path: helm
+    helm:
+      releaseName: aiops-quality
+      valuesObject:
+        serviceMonitor:
+          enabled: true
+          releaseLabel: monitoring
+        retrainWebhook:
+          enabled: true
+          kind: github
+          url: ""  # https://api.github.com/repos/nickolas-z/goit-devops-final-project/dispatches
+          ref: main
+          event: drift-detected
+          existingSecret: aiops-quality-webhook
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: application
+  syncPolicy:
+    automated:
+      prune: true       # видаляти ресурси, яких більше немає в git
+      selfHeal: true    # повертати ручні зміни у кластері до стану git
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

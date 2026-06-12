@@ -1,0 +1,74 @@
+# Default values для aiops-quality.
+
+replicaCount: 2
+
+image:
+  # Образ збирається у CI (GitHub Actions, .github/workflows/retrain.yml) і пушиться
+  # у GitHub Container Registry. Для GitLab-альтернативи — registry.gitlab.com/<...>.
+  repository: ghcr.io/nickolas-z/goit-devops-final-project
+  # tag за замовчуванням = appVersion з Chart.yaml (оновлюється при retrain).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+containerPort: 8000
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+env:
+  MODEL_PATH: /app/model/model.joblib
+  REFERENCE_PATH: /app/model/reference.json
+  DRIFT_Z_THRESHOLD: "3.0"
+  DRIFT_WINDOW: "50"
+  DRIFT_P_VALUE: "0.05"
+
+retrainWebhook:
+  enabled: true
+  kind: github      # github (repository_dispatch) | gitlab (pipeline trigger)
+  # github: https://api.github.com/repos/<owner>/<repo>/dispatches
+  # gitlab: https://gitlab.com/api/v4/projects/<ID>/ref/main/trigger/pipeline
+  url: ""
+  ref: main
+  event: drift-detected
+  existingSecret: ""
+  token: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+# Liveness/readiness — на /health.
+probes:
+  enabled: true
+
+# ServiceMonitor для kube-prometheus-stack (scrape /metrics).
+serviceMonitor:
+  enabled: true
+  releaseLabel: monitoring
+  interval: 15s
+  path: /metrics
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}

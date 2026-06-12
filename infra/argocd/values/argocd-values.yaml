@@ -1,0 +1,38 @@
+global:
+  logging:
+    format: text
+    level: info
+
+configs:
+  cm:
+    timeout.reconciliation: 180s
+    timeout.hard.reconciliation: 0s
+  rbac:
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:admin, applications, *, */*, allow
+      p, role:admin, clusters, *, *, allow
+      p, role:admin, repositories, *, *, allow
+      g, argocd-admins, role:admin
+    scopes: "[groups]"
+
+controller:
+  replicas: 1
+
+server:
+  replicas: 1
+  extraArgs:
+    - --insecure
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  replicas: 1
+
+notifications:
+  enabled: false

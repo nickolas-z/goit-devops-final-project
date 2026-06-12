@@ -1,0 +1,80 @@
+stages:
+  - retrain
+  - build
+  - bump
+
+variables:
+  IMAGE: $CI_REGISTRY_IMAGE
+  GIT_DEPTH: "1"
+
+.retrain_rules: &retrain_rules
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      changes:
+        - model/**/*
+      when: manual
+      allow_failure: true
+
+retrain-model:
+  stage: retrain
+  image: python:3.11-slim
+  <<: *retrain_rules
+  script:
+    - pip install --no-cache-dir -r model/requirements.txt
+    - export MODEL_VERSION="$(date +%Y%m%d)-${CI_COMMIT_SHORT_SHA}"
+    - echo "MODEL_VERSION=${MODEL_VERSION}"
+    - MODEL_VERSION="${MODEL_VERSION}" python model/train.py
+    - echo "MODEL_VERSION=${MODEL_VERSION}" > build.env
+  artifacts:
+    paths:
+      - model/model.joblib
+      - model/reference.json
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+
+build-image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  needs:
+    - job: retrain-model
+      artifacts: true
+  <<: *retrain_rules
+  script:
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"username\":\"${CI_REGISTRY_USER}\",\"password\":\"${CI_REGISTRY_PASSWORD}\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --build-arg "MODEL_VERSION=${MODEL_VERSION}"
+      --destination "${IMAGE}:${MODEL_VERSION}"
+      --destination "${IMAGE}:latest"
+
+bump-helm:
+  stage: bump
+  image: alpine:3.20
+  needs:
+    - job: retrain-model
+      artifacts: true
+    - job: build-image
+  <<: *retrain_rules
+  variables:
+    GIT_STRATEGY: clone
+    GITHUB_REPO: "nickolas-z/goit-devops-final-project"
+    GITHUB_BRANCH: "main"
+  script:
+    - apk add --no-cache git yq
+    - git config user.email "ci@gitlab"
+    - git config user.name "gitlab-ci"
+    - yq -i ".image.tag = \"${MODEL_VERSION}\"" helm/values.yaml
+    - yq -i ".appVersion = \"${MODEL_VERSION}\"" helm/Chart.yaml
+    - git add helm/values.yaml helm/Chart.yaml model/model.joblib model/reference.json
+    - git commit -m "ci(retrain): model ${MODEL_VERSION} [skip ci]" || { echo "nothing to commit"; exit 0; }
+    - git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" "HEAD:${GITHUB_BRANCH}"
